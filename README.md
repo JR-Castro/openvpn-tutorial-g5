@@ -12,13 +12,13 @@ cd ~/easy-rsa
 ./easy-rsa init-pki
 ```
 
-También vamos a usar una key para TLS pre-generada, usando el comando:
+También vamos a usar una key para HMAC para usar con TLS/SSL. Esto hace que cualquier paquete UDP que no tenga el tag HMAC correcto sea droppeado sin procesar, protegiendonos de ataques DoS, port flooding, port scanning, vulnerabilidades de buffer overflow en la implementación de TLS/SSL, y previniendo TLS/SSL handshakes de clientes sin permisos, descartandolos antes de que inicien. Para generar la clave vamos a usar el siguiente comando:
 
 ```bash
 openvpn --genkey secret ta.key
 ```
 
-Editar el archivo vars para que tenga la siguiente configuración:
+Editar el archivo vars para que tenga la siguiente configuración. Tambien para mejorar la seguridad vamos a hacer uso de criptografía basada en curvas elipticas y usando SHA512 para hashear.
 
 ```
 set_var EASYRSA_REQ_COUNTRY    "COUNTRYCODE"
@@ -31,7 +31,7 @@ set_var EASYRSA_ALGO           "ec"
 set_var EASYRSA_DIGEST         "sha512"
 ```
 
-El proximo comando va a pedir una passphrase que luego debe ser usada para firmar los certificados.
+El proximo comando va a pedir una passphrase que luego debe ser usada para firmar los certificados, así que se recomienda recordarla o agregar el parametro `nopass`.
 
 ```bash
 ./easy-rsa build-ca
@@ -43,7 +43,7 @@ Luego, para crear un y firmar un certificado solo es necesario seguir los siguie
 ./easyrsa gen-req $CERT_NAME nopass
 ```
 
-Una vez generado un certificado, para firmarlo en caso de ser para un servidor podemos usar:
+Una vez generado un certificado, para firmarlo en caso de ser para el servidor podemos usar:
 
 ```bash
 ./easy-rsa sign-req server $CERT_NAME
@@ -76,7 +76,7 @@ sudo cp ~/ca.crt ~/server1.crt ~/server1.key ~/ta.key /etc/openvpn
 sudo vim /etc/openvpn/server1.conf
 ```
 
-El archivo de configuración del server debería quedar algo así:
+En `config-files/server.conf` se puede encontrar el archivo de configuración entero, pero las partes más relevantes son estas:
 
 ```conf
 port 1194
@@ -90,6 +90,9 @@ key /etc/openvpn/server1.key
 
 dh none
 
+# Vamos a usar AES-256-GCM junto a SHA256 para más seguridad, usando claves de mayor tamaño (default es Blowfish, de 128 bits).
+# Esto es importante despues replicarlo en el cliente.
+# En caso de tener clientes más viejos puede llegar a generar problemas de incompatibilidad
 data-ciphers AES-256-GCM
 auth SHA256
 
@@ -99,6 +102,7 @@ server 10.8.0.0 255.255.255.0
 
 push "route 172.31.0.0 2555.255.240.0"
 # Redirecciona el trafico de todos los cleintes a traves de la VPN, incluido DNS
+# En el caso de que un cliente sea una instancía EC2, para poder conectarte vas a tener que realizar SSH a traves del servidor OpenVPN.
 ;push "redirect-gateway def1 bypass-dhcp"
 
 # Esto permite que varios clientes usen el mismo certificado, NO USAR EN PRODUCCIÓN, solo para testing.
@@ -126,19 +130,15 @@ sudo vim /etc/sysctl.conf
 sudo sysctl -p /etc/sysctl.conf
 ```
 
-Y para poder permitir que se haga NAT de los paquetes que ingresan:
+Y para poder permitir que las maquinas en la LAN del server respondan a lo que reciben, hay que agregar una regla al gateway de la LAN para que rutee lo que viene por la subred del VPN (10.8.0.0/24) a la IP privada del servidor de OpenVPN
 
-```bash
-sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enX0 -j MASQUERADE
-```
-
-Esto es temporal, hay que reconfigurarlo en cada reinicio del servidor.
+Otra posibilidad es hacer NAT con `sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enX0 -j MASQUERADE`, pero es temporal, hay que reconfigurarlo en cada reinicio del servidor o hacerlo permanente.
 
 
 Finalmente podemos empezar el servicio de OpenVPN:
 
 ```bash
-sudo systemctl start openvpn@server1
+sudo systemctl start openvpn@server
 #ifconfig deberia mostrar una interfaz tun
 ```
 
