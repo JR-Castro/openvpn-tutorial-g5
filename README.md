@@ -264,6 +264,99 @@ sudo systemctl start openvpn@server
 #ifconfig deberia mostrar una interfaz tun
 ```
 
+### Autenticación Externa
+
+Por ejemplo, si somos una compañía, y queremos verificar que los que se conectan a nuestro VPN pertenecen a nuestra organización mediante el uso de un servidor RADIUS o algún otro lugar donde queramos verificar las credenciales, podemos hacerlo mediante la siguiente configruación.
+
+Para comenzar este ejemplo, primero vamos a levantar un freeradius en el webserver-1, que esta en la misma red que el servidor OpenVPN
+
+```bash
+sudo apt update && sudo apt install -y freeradius
+```
+
+Luego tenemos que editar el archivo `/etc/freeradius/3.0/clients.conf` y agregar un permiso para que nuestro servidor OpenVPN se pueda conectar. Por defecto también esta permitido que `localhost` se conecte con password `testing123`.
+
+```conf
+client openvpn-server {
+    ipaddr          = 10.0.5.106
+    secret          = totallySecret
+    require_message_authenticator = no
+    shortname       = specific-client
+}
+```
+
+Ahora vamos a agregar al menos un cliente en el archivo `/etc/freeradius/3.0/users`
+
+```conf
+testuser Cleartext-Password := "1234567890"
+```
+Ahora, reiniciando el servicio de freeradius y testeando con el siguiente comando, deberiamos obtener el resultado de que las credenciales son correctas:
+
+```bash
+sudo systemctl restart freeradius
+radtest testuser 1234567890 127.0.0.1 0 testing123
+# Sent Access-Request Id 59 from 0.0.0.0:37807 to 127.0.0.1:1812 length 78
+# 	User-Name = "testuser"
+# 	User-Password = "1234567890"
+# 	NAS-IP-Address = 10.0.14.27
+# 	NAS-Port = 0
+# 	Message-Authenticator = 0x00
+# 	Cleartext-Password = "1234567890"
+# Received Access-Accept Id 59 from 127.0.0.1:1812 to 127.0.0.1:37807 length 38
+# 	Message-Authenticator = 0x03479d6753a071ff0d8d88d1eecf0734
+```
+
+Ahora, en el servidor de OpenVPN:
+
+```bash
+sudo apt update && sudo apt install -y freeradius-utils
+sudo touch /etc/openvpn/auth.sh
+sudo chmod +x /etc/openvpn/auth.sh
+sudo vim /etc/openvpn/auth.sh 
+```
+
+```bash
+#!/bin/bash
+x="radtest $username $password 10.0.14.27 1812 totallySecret"
+y=$(eval "$x")
+ 
+if [[ $y == *"Access-Accept"* ]]; then
+  exit 0
+        else
+  exit 1
+fi
+```
+
+Ahora vamos a editar `/etc/openvpn/server.conf` para hacer uso del script para verificar el usuario con RADIUS:
+
+```conf
+# Agregamos esta linea
+auth-user-pass-verify /etc/openvpn/auth.sh via-env
+script-security 3
+```
+
+Y ahora iniciamos el servidor
+
+```bash
+sudo systemct start openvpn@server
+```
+
+Luego en el cliente hay que poner la siguiente configuración:
+
+```conf
+; Asi pide las credenciales
+auth-user-pass
+;auth-user-pass /etc/openvpn/auth.txt
+```
+
+Donde `/etc/openvpn/auth.txt` tiene las siguientes dos lienas:
+
+```
+testuser
+1234567890
+```
+
+
 ## Client Set-Up
 
 ```bash
