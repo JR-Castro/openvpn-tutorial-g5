@@ -1,4 +1,5 @@
 # openvpn-tutorial-g5
+
 OpenVPN tutorial for client-site and site-site connection
 
 # CA Set-up
@@ -59,7 +60,6 @@ chmod -R 700 ~/client-configs
 ```
 
 Y luego habra que copiar los archivos `~/easy-rsa/pki/ca.crt`, `~/easy-rsa/pki/issued/$CERT_NAME.crt`, `~/easy-rsa/private/$CERT_NAME.key` y `~/easy-rsa/ta.key` a cada maquina correspondiente.
-
 
 # OpenVPN Client-Site Setup
 
@@ -134,13 +134,125 @@ Y para poder permitir que las maquinas en la LAN del server respondan a lo que r
 
 Otra posibilidad es hacer NAT con `sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enX0 -j MASQUERADE`, pero es temporal, hay que reconfigurarlo en cada reinicio del servidor o hacerlo permanente.
 
-
 Finalmente podemos empezar el servicio de OpenVPN:
 
 ```bash
 sudo systemctl start openvpn@server
 #ifconfig deberia mostrar una interfaz tun
 ```
+
+### Otorgar IP de la red interna por DHCP a Clients
+
+Para otorgar IP por DHCP a la red interna del sitio, es necesario configurar un bridge y utilizar la interface TAP. Para crear el puente usaremos el paquete `bridge-utils`
+
+Para llevar a cabo la configuracion debemos conocer algunos parametros:
+|Setting|param name| value |
+|-------|----------|-------|
+|Ethernet Interface|eth|enp3s0|
+|Router IP Address|r_ip|192.168.0.1|
+|Local IP Address|eth_ip|192.168.0.58|
+|Local Netmask|eth_netmask|255.255.255.0|
+|Local Broaadcast Address|eth_broadcast|192.168.0.255|
+|VPN client address pool start|pool_start|192.168.0.100|
+|VPN client address pool end|pool_end|192.168.0.110|
+|Virtual Bridge Interface|br|br0|
+|Virtual TAP Interface|tap|tap0|
+
+En base a estos parametros podemos crear el script `bridge-start.sh` en `/etc/openvpn/`:
+
+```bash
+#!/bin/bash
+
+# Definimos la interface del bridge
+br="br0"
+
+# Definimos una lista de interfaces TAP a las
+# cuales le hacemos bridge,
+# por ej. tap="tap0 tap1 tap2"
+tap="tap0"
+
+# Definimos interfaces de ethernet fisicas a las
+# cuales le hacemos bridge con la/s interface/s TAP
+# definida/s anteriormente
+eth="enp3s0"
+eth_ip="192.168.0.58"
+eth_netmask="255.255.255.0"
+eth_broadcast="192.168.0.255"
+
+for t in $tap; do
+    openvpn --mktun --dev $t
+done
+
+brctl addbr $br
+brctl addif $br $eth
+
+for t in $tap; do
+    brctl addif $br $t
+done
+
+for t in $tap; do
+    ifconfig $t 0.0.0.0 promisc up
+done
+
+ifconfig $eth 0.0.0.0 promisc up
+
+ifconfig $br $eth_ip netmask $eth_netmask broadcast $eth_broadcast
+```
+
+Y el script `bridge-stop.sh` para finalizar el ethernet bridging:
+
+```bash
+#!/bin/bash
+
+# Definimos la interface del bridge
+br="br0"
+
+# Definimos una lista de interfaces TAP a las
+# cuales les hicimos bridge,
+# por ej. tap="tap0 tap1 tap2"
+tap="tap0"
+
+ifconfig $br down
+brctl delbr $br
+
+for t in $tap; do
+    openvpn --rmtun --dev $t
+done
+```
+
+Luego, podemos utilizar la configuracion de server que se encuentra en [/config-files/server/server-tap.conf](https://github.com/JR-Castro/openvpn-tutorial-g5/blob/main/config-files/server/server.conf) con la siguiente modificacion:
+
+En la linea 139, modifiquela con los valores que correspondan:
+
+```bash
+server-bridge {eth_ip} {eth_netmask} {pool_start} {pool_end}
+```
+
+Una vez hecho esto, se puede configurar para cada cliente en el `ccd` una IP estatica dentro del sitio, como se ve en [/config-files/server/ccd-client-site/client1](https://github.com/JR-Castro/openvpn-tutorial-g5/blob/main/config-files/server/ccd-client-site/client1) con modificando el comando en este de la siguiente manera:
+
+```bash
+ifconfig-push {ip_in_pool} {eth_netmask}
+```
+
+Por ejemplo, `ip_in_pool = 192.168.0.101`.
+
+#TODO: PROBAR USAR EN LA CONF `push "redirect-gateway def1 bypass-dhcp" PARA NO REQUERIR UNA CONF POR CADA USUARIO
+
+Ahora ya podemos comenzar el bridge y el server de OpenVPN con los siguientes comandos:
+
+```bash
+sudo /etc/openvpn/bridge-start.sh
+sudo systemctl start openvpn@server
+```
+
+Si ocurren problemas de conexion, utilice los siguientes comandos:
+
+```bash
+route add default gw {r_ip} br0
+sudo systemd-resolve --flush-caches
+```
+
+Y para dar cierre se puede utilizar el script de `bridge_stop.sh`.
 
 ## Client Set-Up
 
@@ -206,6 +318,7 @@ export HTTPS_PROXY=${https_proxy}
 # Descomentar la linea
 sudo vim /etc/openvpn/server1.conf
 ```
+
 Agregamos las lienas
 
 ```ovpn
