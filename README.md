@@ -1,6 +1,13 @@
 # openvpn-tutorial-g5
 
-OpenVPN tutorial for client-site and site-site connection
+OpenVPN tutorial para conexion client-site and site-site.
+
+**Redes de Informacion - 2024-2Q**
+
+Grupo 5:
+
+- Castro, Juan Ramiro
+- Ricarte, Matias Agustin
 
 # CA Set-up
 
@@ -236,7 +243,7 @@ ifconfig-push {ip_in_pool} {eth_netmask}
 
 Por ejemplo, `ip_in_pool = 192.168.0.101`.
 
-#TODO: PROBAR USAR EN LA CONF `push "redirect-gateway def1 bypass-dhcp" PARA NO REQUERIR UNA CONF POR CADA USUARIO
+**#TODO: PROBAR USAR EN LA CONF `push "redirect-gateway def1 bypass-dhcp" PARA NO REQUERIR UNA CONF POR CADA USUARIO**
 
 Ahora ya podemos comenzar el bridge y el server de OpenVPN con los siguientes comandos:
 
@@ -248,8 +255,12 @@ sudo systemctl start openvpn@server
 Si ocurren problemas de conexion, utilice los siguientes comandos:
 
 ```bash
-route add default gw {r_ip} br0
+route add default gw {r_ip} {br}
 sudo systemd-resolve --flush-caches
+
+iptables -A INPUT -i {tap} -j ACCEPT
+iptables -A INPUT -i {br} -j ACCEPT
+iptables -A FORWARD -i {br} -j ACCEPT
 ```
 
 Y para dar cierre se puede utilizar el script de `bridge_stop.sh`.
