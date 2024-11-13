@@ -83,13 +83,16 @@ sudo cp /usr/share/doc/openvpn/examples/sample-config-files/server.conf /etc/ope
 
 Primero hay que crear un ethernet-bridge en el servidor entre la interfaz TAP y la interfaz que use el servidor para conectarse a la LAN que se quiere compartir. Hay que obtener primero el nombre de la interfaz de ethernet (`eth0`), la IP local (`192.168.0.35`), la mascara local (`255.255.255.0`), la dirección de broadcast (`192.168.0.255`), el default gateway (`192.168.0.1`), las direcciones que se le van a asignar a los clientes (`192.168.0.100` a `192.168.0.124`), la interfaz de bridge (`br0`) y la interfaz TAP (`tap0`).
 
-Editar el script [bridge-start](./config-files/server/bridge-start.sh) con los valores acordes a nuestra red, y luego correr los siguientes comandos. Recomendamos no tener nada critico a cargo pues probablemente se perdera la conexión a internet por unos momentos.
+Editar el script [bridge-start](./config-files/server/bridge-start.sh) con los valores acordes a nuestra red, y luego correr los siguientes comandos, avisamos que probablemente perdera la conexión a internet por unos momentos.
 
 ```bash
 sudo ./bridge-start.sh
 sudo route add default gw 192.168.0.1 br0
 # Hay que resetear los caches de DNS por que si no nos quedamos sin acceso a internet
 sudo sudo systemd-resolve --flush-caches
+iptables -A INPUT -i tap0 -j ACCEPT
+iptables -A INPUT -i br0 -j ACCEPT
+iptables -A FORWARD -i br0 -j ACCEPT
 ```
 
 Para más información recomendamos leer la documentación de [Ethernet Bridging](https://openvpn.net/community-resources/ethernet-bridging/)
