@@ -1,6 +1,9 @@
 # openvpn-tutorial-g5
 OpenVPN tutorial for client-site and site-site connection
 
+Para la arquitectura, vamos a tener dos VPC en AWS: 172.31.0.0/16 y 172.32.0.0/16, donde ambos van a tener dos instancias EC2 corriendo ubuntu. En la 172.31.0.0/16 va a haber un servidor que va a ser el OpenVPN server, mientras que en la 172.32.0.0/16 va a haber un servidor denominado el OpenVPN client.
+
+
 # CA Set-up
 
 Primero necesitamos un servidor que sirva como CA para firmar nuestros certificados. Para esto vamos a usar easy-rsa.
@@ -63,7 +66,114 @@ Y luego habra que copiar los archivos `~/easy-rsa/pki/ca.crt`, `~/easy-rsa/pki/i
 
 # OpenVPN Client-Site Setup
 
-## Server Set-Up
+## TAP
+
+TAP nos permite realizar un bridge de Ethernet a traves del tunel VPN, lo cual nos permitiria hacer como si el cliente estuviera en la misma LAN que el servidor, puediendo recibir mensajes desde otros dispositivos del lado del server sin problema alguno.
+
+### Server Set-Up
+
+Primero tenemos que asegurarnos que nuestro servidor tenga OpenVPN, net-tools y bridge-utils
+
+```bash
+sudo apt update && sudo apt install -y openvpn net-tools
+sudo cp /usr/share/doc/openvpn/examples/sample-config-files/server.conf /etc/openvpn/server-tap.conf
+```
+
+#### Bridge
+
+Primero hay que crear un ethernet-bridge en el servidor entre la interfaz TAP y la interfaz que use el servidor para conectarse a la LAN que se quiere compartir. Hay que obtener primero el nombre de la interfaz de ethernet (`eth0`), la IP local (`192.168.0.35`), la mascara local (`255.255.255.0`), la dirección de broadcast (`192.168.0.255`), el default gateway (`192.168.0.1`), las direcciones que se le van a asignar a los clientes (`192.168.0.100` a `192.168.0.124`), la interfaz de bridge (`br0`) y la interfaz TAP (`tap0`).
+
+Editar el script [bridge-start](./config-files/server/bridge-start.sh) con los valores acordes a nuestra red, y luego correr los siguientes comandos. Recomendamos no tener nada critico a cargo pues probablemente se perdera la conexión a internet por unos momentos.
+
+```bash
+sudo ./bridge-start.sh
+sudo route add default gw 192.168.0.1 br0
+# Hay que resetear los caches de DNS por que si no nos quedamos sin acceso a internet
+sudo sudo systemd-resolve --flush-caches
+```
+
+Para más información recomendamos leer la documentación de [Ethernet Bridging](https://openvpn.net/community-resources/ethernet-bridging/)
+
+#### OpenVPN
+
+```bash
+# Tambien nos tenemos que asegurar de copiar los archivos ca.crt, server1.crt, server1.key y ta.key a la carpeta de configuración de openvpn, en nuestro caso se los madnamos al server usando scp y los dejamos en el home del usuario ubuntu.
+sudo cp ~/ca.crt ~/server1.crt ~/server1.key ~/ta.key /etc/openvpn
+sudo vim /etc/openvpn/server-tap.conf
+```
+
+Pueden encontrar un archivo de configuración de ejemplo en [server-tap](./config-files/server/server-tap.conf), pero los siguientes valores son los más importantes a la hora de configurar:
+
+```conf
+port 1194
+proto udp
+
+dev tap0
+
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server1.crt
+key /etc/openvpn/server1.key
+dh none
+data-ciphers AES-256-GCM
+auth SHA256
+
+
+# El primer valor es la IP del OpenVPN server, despúes la mascara de la red (en nuestro caso es 192.168.0.0/24) y despues el rango de IPs que se les quieren asignar a los clientes 
+server-bridge 192.168.0.38 255.255.255.0 192.168.0.100 192.168.0.124
+# Para poder asignar una IP especifica a cada cliente se puede crear un archivo <cname> por cliente en el client-config-dir para asignarlas.
+client-config-dir ccd-client-site
+
+
+# Si lo que se quiere es que reciban la configuración por medio de un servidor DHCP del lado del servidor
+;server-bridge
+push "route 192.168.0.0 255.255.255.0"
+
+tls-auth /etc/openvpn/ta.key 0
+```
+
+Para levantar el servidor se usa:
+
+```bash
+sudo systemctl start openvpn@server-tap
+```
+
+### Client Set-Up
+
+Del lado del cliente la configuración es más facíl, solo necesitamos indicar que se va a usar la interfaz TAP, el protocolo, la IP y puerto del servidor y los certificados y claves a utilizar. Se puede encontrar el ejemplo completo en [client-tap.conf](./config-files/client/client-tap.conf).
+
+```bash
+# Obtenemos el archivo de ejemplo de configuración
+sudo cp /usr/share/doc/openvpn/examples/sample-config-files/client.conf /etc/openvpn/client-tap.conf
+sudo vim /etc/openvpn/client-tap.conf
+```
+Los siguientes son los valores más relevantes a modificar en el archivo de configuración:
+
+```conf
+client
+dev tap
+proto udp
+remote <public_server_ip> <port>
+ca /etc/openvpn/client/ca.crt
+cert /etc/openvpn/client/client1.crt
+key /etc/openvpn/client/client1.key
+data-ciphers AES-256-GCM
+auth SHA256
+tls-auth /etc/openvpn/client/ta.key 1
+```
+
+Luego, para levantar el cliente y verificar su funcionamiento podemos realizar los siguientes comandos:
+
+```bash
+sudo systemctl start openvpn@client-tap
+ifconfig # Deberiamos ver una interfaz tap con IP de la LAN del servidor
+ping 192.168.0.1 # Deberia funcionar
+```
+
+## TUN
+
+TUN, en cambio, tiene una configuración más facíl que nos permite asignarle una IP de la subred del túnel (10.8.0.0/24) a cada cliente, y solo podemos enviar paquetes IP a través de esta interface.
+
+### Server Set-Up
 
 Ahora en el servidor, podemos empezar a realizar nuestra configuración de OpenVPN.
 
@@ -182,7 +292,7 @@ sudo vim /etc/squid/squid.conf
 Tenemos que descomentar la linea
 
 ```
-hettp_access allow localnet
+http_access allow localnet
 ```
 
 ### Server
