@@ -140,6 +140,15 @@ Para levantar el servidor se usa:
 sudo systemctl start openvpn@server-tap
 ```
 
+Y también hay que asegurarse de encender el forwarding de paquetes:
+
+```bash
+sudo vim /etc/sysctl.conf
+# Desomentar la linea
+#net.ipv4.ip_forward=1
+sudo sysctl -p /etc/sysctl.conf
+```
+
 ### Client Set-Up
 
 Del lado del cliente la configuración es más facíl, solo necesitamos indicar que se va a usar la interfaz TAP, el protocolo, la IP y puerto del servidor y los certificados y claves a utilizar. Se puede encontrar el ejemplo completo en [client-tap.conf](./config-files/client/client-tap.conf).
@@ -258,12 +267,14 @@ sudo systemctl start openvpn@server
 ## Client Set-Up
 
 ```bash
-sudo apt update
-sudo apt install openvpn
+sudo apt update && sudo apt install -y openvpn
+# Necesitamos mandar estos archivos por alguna forma segura (como SCP) al client
 sudo cp ~/ca.crt ~/client1.key ~/client1.crt ~/ta.key /etc/openvpn/client
 sudo cp /usr/share/doc/openvpn/examples/sample-config-files/client.conf /etc/openvpn/client1.conf
 sudo vim /etc/openvpn/client1.conf
 ```
+
+El archivo de configuración usado esta en [client-site-site.conf](./config-files/client/client-site-site.conf) pero estos son los valores relevantes:
 
 ```ovpn
 client
@@ -279,8 +290,10 @@ tls-auth /etc/openvpn/client/client1.key 1
 verb 3
 ```
 
+Iniciamos la conexión del lado del cliente:
+
 ```bash
-sudo systemctl start openvpn
+sudo systemctl start openvpn@client-site-site
 ```
 
 ## Proxy Set-Up
@@ -313,22 +326,53 @@ export HTTPS_PROXY=${https_proxy}
 
 # OpenVPN Site to Site Set-Up
 
-# Server
+## Server
 
 ```bash
-# Descomentar la linea
-sudo vim /etc/openvpn/server1.conf
+sudo cp /usr/share/doc/openvpn/examples/sample-config-files/server.conf /etc/openvpn/server-site-to-site.conf
+sudo vim /etc/openvpn/server-site-to-site.conf
 ```
-Agregamos las lienas
+Es muy similar a la conexión mediante TUN realizada anteriormente, y se puede ver el archivo de configuración usado en [server-site-to-site.conf](./config-files/server/server-site-to-site.conf), pero basicamnte solo cambian estas lineas en comparación:
 
 ```ovpn
-client-config-dir ccd
-route 172.32.0.0 255.255.0.0
+server 10.8.0.0 255.255.255.0
+push "route 10.0.0.0 255.255.0.0"
+
+client-config-dir ccd-site-site
+route 10.1.0.0 255.255.0.0
 ```
 
-Creamos el directorio `ccd`, y por cada cliente creamos un archivo con su `cname`.
+Creamos el directorio `ccd-site-site`, y por cada cliente creamos un archivo con su `cname`.
 
 ```ovpn
 # client1
-iroute 172.32.0.0 255.255.255.0
+iroute 10.1.0.0 255.255.0.0
 ```
+
+Y también hay que asegurarse de encender el forwarding de paquetes:
+
+```bash
+sudo vim /etc/sysctl.conf
+# Desomentar la linea
+#net.ipv4.ip_forward=1
+sudo sysctl -p /etc/sysctl.conf
+```
+
+## Client
+
+El cliente se conecta de la misma forma que en el formato Cliente - Sitio, pero ahora hay que encender el forwarding de paquetes de su lado también:
+
+```bash
+sudo vim /etc/sysctl.conf
+# Desomentar la linea
+#net.ipv4.ip_forward=1
+sudo sysctl -p /etc/sysctl.conf
+```
+
+## Routing
+
+Para asegurarse que puedan alcanzarse, hay que agregar las siguientes reglas a los default gateways de ambas redes:
+- Agregar que el tráfico dirigido a 10.1.0.0/16 y 10.8.0.0/24 sea enviado a traves del servidor OpenVPN en la red 10.0.0.0/16
+- Agregar que el tráfico dirigido a 10.0.0.0/16 y 10.8.0.0/24 sea enviado a través del cliente OpenVPN en la red 10.1.0.0/16
+
+En caso de que el servidor y cliente sean instancias de EC2, hay que apagar el checkeo de entrada/salida de paquetes: Acciones > Redes > Cambiar comprobación de origen y destino > Detener > Guardar.
