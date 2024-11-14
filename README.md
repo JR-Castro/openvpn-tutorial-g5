@@ -94,9 +94,9 @@ sudo ./bridge-start.sh
 sudo route add default gw 192.168.0.1 br0
 # Hay que resetear los caches de DNS por que si no nos quedamos sin acceso a internet
 sudo sudo systemd-resolve --flush-caches
-iptables -A INPUT -i tap0 -j ACCEPT
-iptables -A INPUT -i br0 -j ACCEPT
-iptables -A FORWARD -i br0 -j ACCEPT
+sudo iptables -A INPUT -i tap0 -j ACCEPT
+sudo iptables -A INPUT -i br0 -j ACCEPT
+sudo iptables -A FORWARD -i br0 -j ACCEPT
 ```
 
 Para más información recomendamos leer la documentación de [Ethernet Bridging](https://openvpn.net/community-resources/ethernet-bridging/)
