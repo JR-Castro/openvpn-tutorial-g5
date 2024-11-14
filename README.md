@@ -1,8 +1,13 @@
 # openvpn-tutorial-g5
-OpenVPN tutorial for client-site and site-site connection
 
-Para la arquitectura, vamos a tener dos VPC en AWS: 172.31.0.0/16 y 172.32.0.0/16, donde ambos van a tener dos instancias EC2 corriendo ubuntu. En la 172.31.0.0/16 va a haber un servidor que va a ser el OpenVPN server, mientras que en la 172.32.0.0/16 va a haber un servidor denominado el OpenVPN client.
+OpenVPN tutorial para conexion client-site and site-site.
 
+**Redes de Informacion - 2024-2Q**
+
+Grupo 5:
+
+- Castro, Juan Ramiro
+- Ricarte, Matias Agustin
 
 # CA Set-up
 
@@ -62,7 +67,6 @@ chmod -R 700 ~/client-configs
 ```
 
 Y luego habra que copiar los archivos `~/easy-rsa/pki/ca.crt`, `~/easy-rsa/pki/issued/$CERT_NAME.crt`, `~/easy-rsa/private/$CERT_NAME.key` y `~/easy-rsa/ta.key` a cada maquina correspondiente.
-
 
 # OpenVPN Client-Site Setup
 
@@ -255,7 +259,6 @@ sudo sysctl -p /etc/sysctl.conf
 Y para poder permitir que las maquinas en la LAN del server respondan a lo que reciben, hay que agregar una regla al gateway de la LAN para que rutee lo que viene por la subred del VPN (10.8.0.0/24) a la IP privada del servidor de OpenVPN
 
 Otra posibilidad es hacer NAT con `sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o enX0 -j MASQUERADE`, pero es temporal, hay que reconfigurarlo en cada reinicio del servidor o hacerlo permanente.
-
 
 Finalmente podemos empezar el servicio de OpenVPN:
 
