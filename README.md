@@ -17,7 +17,7 @@ Primero necesitamos un servidor que sirva como CA para firmar nuestros certifica
 sudo apt install easy-rsa
 make-cadir ~/easy-rsa
 cd ~/easy-rsa
-./easy-rsa init-pki
+./easyrsa init-pki
 ```
 
 También vamos a usar una key para HMAC para usar con TLS/SSL. Esto hace que cualquier paquete UDP que no tenga el tag HMAC correcto sea droppeado sin procesar, protegiendonos de ataques DoS, port flooding, port scanning, vulnerabilidades de buffer overflow en la implementación de TLS/SSL, y previniendo TLS/SSL handshakes de clientes sin permisos, descartandolos antes de que inicien. Para generar la clave vamos a usar el siguiente comando:
@@ -226,7 +226,7 @@ topology subnet
 
 server 10.8.0.0 255.255.255.0
 
-push "route 172.31.0.0 2555.255.240.0"
+push "route 172.31.0.0 255.255.240.0"
 # Redirecciona el trafico de todos los cleintes a traves de la VPN, incluido DNS
 # En el caso de que un cliente sea una instancía EC2, para poder conectarte vas a tener que realizar SSH a traves del servidor OpenVPN.
 ;push "redirect-gateway def1 bypass-dhcp"
