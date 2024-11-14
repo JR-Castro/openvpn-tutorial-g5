@@ -125,7 +125,7 @@ data-ciphers AES-256-GCM
 auth SHA256
 
 
-# El primer valor es la IP del OpenVPN server, despúes la mascara de la red (en nuestro caso es 192.168.0.0/24) y despues el rango de IPs que se les quieren asignar a los clientes 
+# El primer valor es la IP del OpenVPN server, despúes la mascara de la red (en nuestro caso es 192.168.0.0/24) y despues el rango de IPs que se les quieren asignar a los clientes
 server-bridge 192.168.0.38 255.255.255.0 192.168.0.100 192.168.0.124
 # Para poder asignar una IP especifica a cada cliente se puede crear un archivo <cname> por cliente en el client-config-dir para asignarlas.
 client-config-dir ccd-client-site
@@ -136,6 +136,14 @@ client-config-dir ccd-client-site
 
 tls-auth /etc/openvpn/ta.key 0
 ```
+
+Una vez hecho esto, se puede configurar para cada cliente en el `ccd` una IP estatica dentro del sitio, como se ve en [/config-files/server/ccd-client-site/client1](https://github.com/JR-Castro/openvpn-tutorial-g5/blob/main/config-files/server/ccd-client-site/client1) de la siguiente manera:
+
+```bash
+ifconfig-push {ip_in_pool} {eth_netmask}
+```
+
+Por ejemplo, `ip_in_pool = 192.168.0.101`, `eth_netmash=255.255.255.0`.
 
 Para levantar el servidor se usa:
 
@@ -161,6 +169,7 @@ Del lado del cliente la configuración es más facíl, solo necesitamos indicar 
 sudo cp /usr/share/doc/openvpn/examples/sample-config-files/client.conf /etc/openvpn/client-tap.conf
 sudo vim /etc/openvpn/client-tap.conf
 ```
+
 Los siguientes son los valores más relevantes a modificar en el archivo de configuración:
 
 ```conf
@@ -292,6 +301,7 @@ Ahora vamos a agregar al menos un cliente en el archivo `/etc/freeradius/3.0/use
 ```conf
 testuser Cleartext-Password := "1234567890"
 ```
+
 Ahora, reiniciando el servicio de freeradius y testeando con el siguiente comando, deberiamos obtener el resultado de que las credenciales son correctas:
 
 ```bash
@@ -314,14 +324,14 @@ Ahora, en el servidor de OpenVPN:
 sudo apt update && sudo apt install -y freeradius-utils
 sudo touch /etc/openvpn/auth.sh
 sudo chmod +x /etc/openvpn/auth.sh
-sudo vim /etc/openvpn/auth.sh 
+sudo vim /etc/openvpn/auth.sh
 ```
 
 ```bash
 #!/bin/bash
 x="radtest $username $password 10.0.14.27 1812 totallySecret"
 y=$(eval "$x")
- 
+
 if [[ $y == *"Access-Accept"* ]]; then
   exit 0
         else
@@ -357,7 +367,6 @@ Donde `/etc/openvpn/auth.txt` tiene las siguientes dos lienas:
 testuser
 1234567890
 ```
-
 
 ## Client Set-Up
 
@@ -416,7 +425,7 @@ Si se desea que ademas de que puedan acceder al proxy, se puede forzar a redirig
 # Esto permite indicarle a los clientes que deben uar un proxy http
 ;push "dhcp-option PROXY_HTTP 10.144.5.14 3128"
 ;push "dhcp-option PROXY_HTTPS 10.144.5.14 3128"
-;push "dhcp-option DNS 1.2.3.4" 
+;push "dhcp-option DNS 1.2.3.4"
 ```
 
 ### Client
@@ -440,6 +449,7 @@ export HTTPS_PROXY=${https_proxy}
 sudo cp /usr/share/doc/openvpn/examples/sample-config-files/server.conf /etc/openvpn/server-site-to-site.conf
 sudo vim /etc/openvpn/server-site-to-site.conf
 ```
+
 Es muy similar a la conexión mediante TUN realizada anteriormente, y se puede ver el archivo de configuración usado en [server-site-to-site.conf](./config-files/server/server-site-to-site.conf), pero basicamnte solo cambian estas lineas en comparación:
 
 ```ovpn
@@ -480,6 +490,7 @@ sudo sysctl -p /etc/sysctl.conf
 ## Routing
 
 Para asegurarse que puedan alcanzarse, hay que agregar las siguientes reglas a los default gateways de ambas redes:
+
 - Agregar que el tráfico dirigido a 10.1.0.0/16 y 10.8.0.0/24 sea enviado a traves del servidor OpenVPN en la red 10.0.0.0/16
 - Agregar que el tráfico dirigido a 10.0.0.0/16 y 10.8.0.0/24 sea enviado a través del cliente OpenVPN en la red 10.1.0.0/16
 
