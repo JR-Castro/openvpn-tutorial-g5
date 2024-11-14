@@ -133,7 +133,6 @@ client-config-dir ccd-client-site
 
 # Si lo que se quiere es que reciban la configuración por medio de un servidor DHCP del lado del servidor
 ;server-bridge
-push "route 192.168.0.0 255.255.255.0"
 
 tls-auth /etc/openvpn/ta.key 0
 ```
@@ -409,7 +408,20 @@ http_access allow localnet
 
 ### Server
 
-Si se desea que ademas de que puedan acceder al proxy, se puede forzar a redirigir el default gateway por el VPN, es decir que el trafico web normal (DNS y HTTP) ahora van a pasar por el server VPN. También es posible redirigir este trafico por el proxy que levantamos en la instancia, seteandolo como un proxy en cada cliente:
+Si se desea que ademas de que puedan acceder al proxy, se puede forzar a redirigir el default gateway por el VPN, es decir que el trafico web normal (DNS y HTTP) ahora van a pasar por el server VPN. En el archivo de configuración cambiar el valor deseado:
+
+```
+# Esto redirige el default gateway del cliente por le VPN, causando que todo el tráfico IP como web browsing pase por el VPN
+;push "redirect-gateway def1 bypass-dhcp"
+# Esto permite indicarle a los clientes que deben uar un proxy http
+;push "dhcp-option PROXY_HTTP 10.144.5.14 3128"
+;push "dhcp-option PROXY_HTTPS 10.144.5.14 3128"
+;push "dhcp-option DNS 1.2.3.4" 
+```
+
+### Client
+
+También es posible redirigir este trafico por el proxy que levantamos en la instancia, seteandolo como un proxy en cada cliente, sin forzar el cambio:
 
 ```bash
 curl -x http://<proxy-ip>:3128 ipinfo.io
